@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dobble woordenspel maker</title>
+<style>
+:root{--bg:#faf8f4;--fg:#222;--card:#fff;--bd:#d9d4ca;--mut:#777;--acc:#2f6fed}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1b19;--fg:#eee;--card:#2a2926;--bd:#47443e;--mut:#9a9a9a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px;max-width:1100px;margin:0 auto}
+h1{font-size:1.3rem;margin:0 0 6px}
+.intro{margin:0 0 12px;color:var(--mut);font-size:.9rem;max-width:65ch}
+.panel{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px;margin-bottom:16px}
+label{font-weight:600;font-size:.95rem}
+textarea{width:100%;min-height:110px;margin-top:6px;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--fg);font:inherit;resize:vertical}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+.count{font-weight:700}.count.ok{color:#1a8f3c}.count.bad{color:#c0392b}
+.msg{font-size:.85rem;color:var(--mut);flex:1 1 200px}
+select,button{font:inherit;padding:7px 12px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--fg);cursor:pointer}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+button:disabled{opacity:.45;cursor:not-allowed}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.card{background:var(--card);border:2px solid var(--bd);border-radius:14px;padding:10px 8px;cursor:pointer;text-align:center}
+.card.sel{border-color:var(--fg)}.card.dim{opacity:.4}
+.n{font-size:.7rem;color:var(--mut);margin-bottom:4px}
+.w{display:block;margin:3px 0;padding:3px 6px;border-radius:8px;font-weight:600;font-size:1.05rem;border:2px solid transparent;overflow-wrap:anywhere}
+.hint{color:var(--mut);font-size:.85rem;margin:0 0 10px}
+@media print{.panel,.hint,.intro,h1{display:none}.card{break-inside:avoid}body{padding:0}}
+</style>
+</head>
+<body>
+<h1>Dobble woordenspel maker</h1>
+<p class="intro">Geef hieronder precies <b>21 woorden</b> in (gescheiden door een komma of een nieuwe regel). Elke kaart krijgt 5 woorden en elke twee kaarten hebben precies één woord gemeen. Met 5 woorden per kaart kunnen het er niet meer dan 21 zijn.</p>
+<div class="panel">
+  <label for="inp">Jouw woorden</label>
+  <textarea id="inp" spellcheck="false"></textarea>
+  <div class="row">
+    <span class="count" id="count">0 / 21</span>
+    <span class="msg" id="msg"></span>
+  </div>
+  <div class="row">
+    <label for="num" style="font-weight:400">Aantal kaarten</label>
+    <select id="num"></select>
+    <button class="primary" id="go">Maak kaarten</button>
+    <button id="again" disabled>Opnieuw husselen</button>
+    <button id="print" disabled>Afdrukken</button>
+  </div>
+</div>
+<p class="hint" id="hint" hidden>Tik op een kaart om te zien welk woord die deelt met elke andere kaart.</p>
+<div class="grid" id="grid"></div>
+<script>
+var MAXW=21, MAXC=21;
+function gfMul(a,b){if(!a||!b)return 0;var l=[0,0,1,2],e=[1,2,3];return e[(l[a]+l[b])%3];}
+function planeLines(){
+  var p={},n=0,x,y,m,c;
+  for(x=0;x<4;x++)for(y=0;y<4;y++)p['a'+x+y]=n++;
+  for(m=0;m<4;m++)p['i'+m]=n++;
+  p.v=n;
+  var L=[];
+  for(m=0;m<4;m++)for(c=0;c<4;c++){var l=[];for(x=0;x<4;x++)l.push(p['a'+x+(gfMul(m,x)^c)]);l.push(p['i'+m]);L.push(l);}
+  for(x=0;x<4;x++){var l2=[];for(y=0;y<4;y++)l2.push(p['a'+x+y]);l2.push(p.v);L.push(l2);}
+  var l3=[];for(m=0;m<4;m++)l3.push(p['i'+m]);l3.push(p.v);L.push(l3);
+  return L;
+}
+function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
+function buildDeck(words,count){
+  var w=shuffle(words);
+  var cards=shuffle(planeLines()).slice(0,count).map(function(l){return shuffle(l.map(function(i){return w[i];}));});
+  return cards;
+}
+
+var inp=document.getElementById('inp'),cnt=document.getElementById('count'),msg=document.getElementById('msg'),
+    num=document.getElementById('num'),go=document.getElementById('go'),again=document.getElementById('again'),
+    prt=document.getElementById('print'),grid=document.getElementById('grid'),hint=document.getElementById('hint');
+var words=[],deck=[],sel=null,hue={};
+for(var i=MAXC;i>=1;i--){var o=document.createElement('option');o.value=i;o.textContent=i;if(i===20)o.selected=true;num.appendChild(o);}
+inp.value=['kaas','kip','maan','pen','vin','nek','pit','mes','ren','tik','raam','spin','aap','vaas','men','sis','kit','naam','ven','aas','tin'].join(', ');
+function parse(){
+  var seen={},out=[],dup=0;
+  inp.value.split(/[,\n;]+/).forEach(function(s){
+    s=s.trim();if(!s)return;
+    var k=s.toLowerCase();
+    if(seen[k]){dup++;return;}
+    seen[k]=1;out.push(s);
+  });
+  return {words:out,dup:dup};
+}
+function update(){
+  var r=parse();words=r.words;
+  cnt.textContent=words.length+' / '+MAXW;
+  var ok=words.length===MAXW;
+  cnt.className='count '+(ok?'ok':'bad');
+  var m='';
+  if(r.dup)m+=r.dup+' dubbel woord genegeerd. ';
+  if(words.length>MAXW)m+='Te veel woorden: haal er '+(words.length-MAXW)+' weg.';
+  else if(words.length<MAXW)m+='Nog '+(MAXW-words.length)+' woord(en) nodig.';
+  else m+='Klaar om kaarten te maken.';
+  msg.textContent=m;
+  go.disabled=!ok;
+}
+function render(){
+  grid.innerHTML='';
+  var mine=sel===null?null:deck[sel];
+  var dark=window.matchMedia&&matchMedia('(prefers-color-scheme:dark)').matches;
+  deck.forEach(function(c,i){
+    var el=document.createElement('div');
+    el.className='card'+(sel===i?' sel':'');
+    if(mine&&sel!==i&&!c.some(function(w){return mine.indexOf(w)>-1;}))el.className+=' dim';
+    var n=document.createElement('div');n.className='n';n.textContent='Kaart '+(i+1);el.appendChild(n);
+    c.forEach(function(w){
+      var s=document.createElement('span');s.className='w';s.textContent=w;
+      if(mine===null||mine.indexOf(w)>-1){
+        var h=hue[w];
+        s.style.background='hsl('+h+','+(dark?'55%':'75%')+','+(dark?'30%':'82%')+')';
+        s.style.borderColor='hsl('+h+',65%,'+(dark?'55%':'45%')+')';
+      }
+      el.appendChild(s);
+    });
+    el.onclick=function(){sel=(sel===i?null:i);render();};
+    grid.appendChild(el);
+  });
+}
+function make(){
+  update();
+  if(words.length!==MAXW)return;
+  words.forEach(function(w,i){hue[w]=(i*137.5)%360;});
+  deck=buildDeck(words,parseInt(num.value,10));
+  sel=null;hint.hidden=false;again.disabled=false;prt.disabled=false;render();
+}
+inp.addEventListener('input',update);
+go.onclick=make;again.onclick=make;prt.onclick=function(){window.print();};
+update();
+</script>
+</body>
+</html>
